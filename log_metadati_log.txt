@@ -1,0 +1,14 @@
+
+[05/12/2025 20:16:02] ERRORE IMPREVISTO
+Tipo: FileNotFoundError
+Dettagli: [Errno 2] No such file or directory: '/mnt/data-drive/peppe/camera/da_sistemare'
+Traceback:
+Traceback (most recent call last):
+  File "/Users/peppe/App/Python/saveLastFoto/saveLastFoto.py", line 197, in <module>
+    main()
+    ~~~~^^
+  File "/Users/peppe/App/Python/saveLastFoto/saveLastFoto.py", line 79, in main
+    f for f in os.listdir(input_folder)
+               ~~~~~~~~~~^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/mnt/data-drive/peppe/camera/da_sistemare'
+
