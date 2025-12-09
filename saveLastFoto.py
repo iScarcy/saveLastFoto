@@ -6,6 +6,9 @@ from pathlib import Path
 import shutil
 import exifread
 from openpyxl import Workbook
+import subprocess
+import json
+import re
 
 import smtplib
 from email.mime.text import MIMEText
@@ -58,31 +61,72 @@ mesi_italiano = {
 # -----------------------
 def estrai_metadati(file_path):
     """
-    Estrae i metadati EXIF da un file immagine usando exifread.
+    Estrae i metadati usando exiftool (richiede che exiftool sia installato).
     Ritorna (metadati_dict, errore_msg) dove metadati_dict è None se errore.
+    Il dizionario contiene almeno la chiave 'data_creazione' (stringa) se trovata.
     """
     try:
-        with file_path.open("rb") as fh:
-            tags = exifread.process_file(fh, details=False, stop_tag="UNDEF")
-        
-        if not tags:
-            return None, "Nessun EXIF presente"
-        
-        metadati = {}
-        # Cerca il tag della data (comune: DateTimeOriginal)
-        data_creazione = None
-        for tag in ("EXIF DateTimeOriginal", "EXIF DateTimeDigitized", "Image DateTime"):
-            if tag in tags:
-                data_creazione = str(tags[tag])
+        # Verifica che exiftool sia disponibile
+        proc_chk = shutil.which("exiftool")
+        if not proc_chk:
+            return None, "exiftool non trovato: installa exiftool (es. `brew install exiftool` o `sudo apt install libimage-exiftool-perl`)"
+
+        # Chiamata a exiftool per ottenere JSON dei tag principali
+        cmd = [
+            "exiftool",
+            "-j",
+            "-DateTimeOriginal",
+            "-CreateDate",
+            "-MediaCreateDate",
+            "-FileModifyDate",
+            "-Make",
+            "-Model",
+            str(file_path)
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            # exiftool ha fallito: ritorna stdout/stderr come messaggio
+            msg = res.stderr.strip() or res.stdout.strip() or f"exiftool exit {res.returncode}"
+            return None, f"exiftool error: {msg}"
+
+        # Parse JSON (exiftool ritorna una lista di oggetti)
+        try:
+            arr = json.loads(res.stdout)
+            if not arr:
+                return None, "Nessun output EXIF da exiftool"
+            tags = arr[0]
+        except Exception as je:
+            return None, f"Errore parsing JSON exiftool: {je}"
+
+        # Cerca data: preferisce DateTimeOriginal -> CreateDate -> MediaCreateDate -> FileModifyDate
+        data_val = None
+        for k in ("DateTimeOriginal", "CreateDate", "MediaCreateDate", "FileModifyDate"):
+            if k in tags and tags[k]:
+                data_val = str(tags[k])
                 break
-        
-        metadati["data_creazione"] = data_creazione
-        # Salva anche altri tag utili se presenti
-        for tag in ("Image Make", "Image Model", "EXIF LensModel", "EXIF FNumber"):
-            if tag in tags:
-                metadati[tag] = str(tags[tag])
-        
+
+        # Alcuni formati possibili contengono timezone o formato diverso.
+        # Estraiamo la porzione YYYY:MM:DD HH:MM:SS se presente
+        data_str_for_parse = None
+        if data_val:
+            m = re.search(r'(\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2})', data_val)
+            if m:
+                data_str_for_parse = m.group(1)
+            else:
+                # fallback: usa il valore intero (potrebbe essere ISO-like); proviamo a convertire sostituendo '-' con ':' per compatibilità
+                # ma non vogliamo dipendenze extra, quindi usiamo il valore così com'è
+                data_str_for_parse = data_val
+
+        metadati = {}
+        metadati["data_creazione_raw"] = data_val
+        metadati["data_creazione"] = data_str_for_parse
+        # Aggiungi altri tag utili
+        for t in ("Make", "Model"):
+            if t in tags:
+                metadati[t] = tags[t]
+
         return metadati, None
+
     except Exception as e:
         return None, str(e)
 
