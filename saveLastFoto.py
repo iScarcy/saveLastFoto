@@ -1,12 +1,11 @@
 import os
-import pandas as pd
 from datetime import datetime
 import configparser
 import traceback
-from io import BytesIO
 from pathlib import Path
 import shutil
 import exifread
+from openpyxl import Workbook
 
 import smtplib
 from email.mime.text import MIMEText
@@ -204,19 +203,27 @@ except Exception as exc:
     exit(1)
 
 # -----------------------
-# 7. Salvataggio Excel
+# 7. Salvataggio Excel con openpyxl
 # -----------------------
-df=pd.DataFrame(dati_excel)
 anno_corrente=datetime.now().strftime("%Y")
 excel_dir = output_path / anno_corrente
 excel_dir.mkdir(parents=True, exist_ok=True)
 excel_path = excel_dir / excel_file
 
-excel_bytes=BytesIO()
-df.to_excel(excel_bytes,index=False)
-excel_bytes.seek(0)
-with excel_path.open("wb") as f:
-    f.write(excel_bytes.read())
+wb = Workbook()
+ws = wb.active
+ws.title = "Elaborazione"
+
+# Intestazione
+headers = ["data_esecuzione", "file", "anno", "mese", "destinazione", "errore", "esito_spostamento"]
+ws.append(headers)
+
+# Dati
+for row_data in dati_excel:
+    ws.append([row_data.get(h, "") for h in headers])
+
+# Salva il file
+wb.save(str(excel_path))
 
 # -----------------------
 # 8. Log finale
